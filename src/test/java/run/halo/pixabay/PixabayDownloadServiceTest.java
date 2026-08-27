@@ -170,12 +170,13 @@ class PixabayDownloadServiceTest {
         when(pixabayClient.search(eq("test-key"), eq("mountain"), eq(1), eq(3), eq("photo"),
             eq(true))).thenReturn(Mono.just(
             new PixabaySearchResponse(1, 1, List.of(image(2001, true)))));
-        // original imageURL fails (e.g. 401 on pixabay.com/get/...), largeImageURL succeeds
+        // original imageURL (deduped with derived cdn URL) fails (e.g. 429 on
+        // pixabay.com/get/...), the derived CDN large URL succeeds
         when(attachmentService.uploadFromUrl(
             argThat(url -> url != null && url.toString().endsWith("2001.jpg")), eq(POLICY),
             any(), anyString()))
             .thenReturn(Mono.error(
-                new RuntimeException("401 UNAUTHORIZED \"Authentication required.\"")));
+                new RuntimeException("429 TOO_MANY_REQUESTS")));
         when(attachmentService.uploadFromUrl(
             argThat(url -> url != null && url.toString().endsWith("2001_1280.jpg")), eq(POLICY),
             any(), anyString()))
@@ -190,7 +191,8 @@ class PixabayDownloadServiceTest {
             .assertNext(summary -> assertEquals(1, summary.added()))
             .verifyComplete();
 
-        verify(attachmentService, times(2))
+        // 2 attempts on the failing URL (retry once) + 1 success on the fallback
+        verify(attachmentService, times(3))
             .uploadFromUrl(any(URL.class), eq(POLICY), any(), anyString());
     }
 

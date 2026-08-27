@@ -265,22 +265,46 @@ public class PixabayDownloadService {
             log.warn("[pixabay] image {} has no usable URL, skipped", image.id());
             return Mono.just(false);
         }
-        return tryUpload(urls, 0, history, policy, groupName, image);
+        return tryUpload(urls, 0, false, new AtomicReference<>(), history, policy, groupName,
+            image);
     }
 
     /**
-     * Try uploading each candidate URL in order. Pixabay's original-size URLs
-     * (pixabay.com/get/...) can answer 401 to non-browser clients, so fall back
-     * to the next tier (large/webformat/preview from the public CDN) instead of
-     * failing the whole image.
+     * Try uploading each candidate URL in order. A failed attempt is retried
+     * once (transient network/pool issues), then the next tier is tried. The
+     * public CDN URL derived from the preview link is preferred, since the
+     * {@code pixabay.com/get/...} links are anonymously rate-limited (429).
      */
-    private Mono<Boolean> tryUpload(List<String> urls, int index, Set<String> history,
-        String policy, String groupName, PixabayImage image) {
+    private Mono<Boolean> tryUpload(List<String> urls, int index, boolean retried,
+        AtomicReference<String> lastError, Set<String> history, String policy, String groupName,
+        PixabayImage image) {
         if (index >= urls.size()) {
+            String error = lastError.get();
+            if (error != null) {
+                firstUploadError.compareAndSet(null, error);
+            }
             return Mono.just(false);
         }
         String url = urls.get(index);
         String filename = image.id() + guessExt(url);
+        return uploadOnce(url, filename, lastError, history, policy, groupName, image)
+            .flatMap(ok -> {
+                if (ok) {
+                    return Mono.just(true);
+                }
+                if (!retried) {
+                    log.warn("[pixabay] retrying image {} via {}", image.id(), url);
+                    return tryUpload(urls, index, true, lastError, history, policy, groupName,
+                        image);
+                }
+                return tryUpload(urls, index + 1, false, lastError, history, policy, groupName,
+                    image);
+            });
+    }
+
+    private Mono<Boolean> uploadOnce(String url, String filename,
+        AtomicReference<String> lastError, Set<String> history, String policy, String groupName,
+        PixabayImage image) {
         try {
             return attachmentService.uploadFromUrl(new URI(url).toURL(), policy, groupName,
                     filename)
@@ -291,44 +315,45 @@ public class PixabayDownloadService {
                 .onErrorResume(e -> {
                     log.warn("[pixabay] upload failed for image {} via {}: {}", image.id(), url,
                         e.getMessage());
-                    if (index + 1 < urls.size()) {
-                        return tryUpload(urls, index + 1, history, policy, groupName, image);
-                    }
-                    firstUploadError.compareAndSet(null,
-                        e.getMessage() + " (URL: " + url + ")");
+                    lastError.set(e.getMessage() + " (URL: " + url + ")");
                     return Mono.just(false);
                 });
         } catch (URISyntaxException | java.net.MalformedURLException e) {
             log.warn("[pixabay] invalid image URL {}: {}", url, e.getMessage());
-            if (index + 1 < urls.size()) {
-                return tryUpload(urls, index + 1, history, policy, groupName, image);
-            }
-            firstUploadError.compareAndSet(null, "invalid image URL: " + e.getMessage());
+            lastError.set("invalid image URL " + url + ": " + e.getMessage());
             return Mono.just(false);
         }
     }
 
     /**
-     * Candidate image URLs for a size tier, in fallback order (same fields as
-     * {@link PixabayImage#pickUrl}, but keeping the full chain so uploads can
-     * degrade to a lower tier on failure instead of giving up).
+     * Candidate image URLs for a size tier, in fallback order. CDN-derived
+     * URLs (from the preview link path) come first because the API's
+     * {@code pixabay.com/get/...} links are anonymous rate-limited (429).
      */
     private static List<String> urlCandidates(PixabayImage image, String size) {
+        String cdnOriginal = image.cdnUrl(".jpg");
+        String cdnLarge = image.cdnUrl("_1280.jpg");
+        String cdnWebformat = image.cdnUrl("_640.jpg");
         List<String> fields = switch (size == null ? "original" : size) {
-            case "large" -> List.of("largeImageURL", "imageURL", "webformatURL", "previewURL");
-            case "webformat" -> List.of("webformatURL", "previewURL");
+            case "large" -> List.of("cdnLarge", "largeImageURL", "cdnOriginal", "imageURL",
+                "cdnWebformat", "webformatURL", "previewURL");
+            case "webformat" -> List.of("cdnWebformat", "webformatURL", "previewURL");
             case "preview" -> List.of("previewURL");
-            default -> List.of("imageURL", "largeImageURL", "webformatURL", "previewURL");
+            default -> List.of("cdnOriginal", "imageURL", "cdnLarge", "largeImageURL",
+                "cdnWebformat", "webformatURL", "previewURL");
         };
         List<String> urls = new ArrayList<>();
         for (String field : fields) {
             String url = switch (field) {
+                case "cdnOriginal" -> cdnOriginal;
+                case "cdnLarge" -> cdnLarge;
+                case "cdnWebformat" -> cdnWebformat;
                 case "imageURL" -> image.imageURL();
                 case "largeImageURL" -> image.largeImageURL();
                 case "webformatURL" -> image.webformatURL();
                 default -> image.previewURL();
             };
-            if (url != null && !url.isBlank()) {
+            if (url != null && !url.isBlank() && !urls.contains(url)) {
                 urls.add(url);
             }
         }
