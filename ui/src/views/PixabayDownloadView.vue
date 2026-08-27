@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import axios from 'axios'
 import {
   IconExternalLinkLine,
@@ -18,37 +18,80 @@ import {
 const API_PREFIX =
   '/apis/console.api.pixabay.halo.run/v1alpha1/plugins/pixabay-downloader'
 
+/** Max time to poll for a triggered download before giving up. */
+const MAX_POLL_MS = 10 * 60 * 1000
+const POLL_INTERVAL_MS = 3000
+
 const loading = ref(false)
 const record = ref<Record<string, any> | null>(null)
 const error = ref('')
+let pollTimer: ReturnType<typeof setInterval> | null = null
 
-async function fetchRecord() {
+async function fetchRecord(silent = false) {
   try {
     const { data } = await axios.get(`${API_PREFIX}/record`)
     record.value = data
+    return data
   } catch (e: any) {
-    const detail = e?.response?.data?.detail || e?.response?.data?.message || e.message
-    error.value = String(detail || e)
+    if (!silent) {
+      const detail = e?.response?.data?.detail || e?.response?.data?.message || e.message
+      error.value = String(detail || e)
+    }
+    return null
   }
 }
 
+function stopPolling() {
+  if (pollTimer !== null) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function startPolling(beforeRunAt: string | null | undefined) {
+  stopPolling()
+  const startedAt = Date.now()
+  pollTimer = setInterval(async () => {
+    await fetchRecord(true)
+    const runAt = record.value?.spec?.lastRunAt
+    if (runAt && runAt !== beforeRunAt) {
+      stopPolling()
+      loading.value = false
+      const added = record.value?.spec?.lastRunAdded ?? 0
+      const message = record.value?.spec?.lastRunMessage
+      Toast.success(`下载完成：新增 ${added} 张${message ? `（${message}）` : ''}`)
+    } else if (Date.now() - startedAt > MAX_POLL_MS) {
+      stopPolling()
+      loading.value = false
+      Toast.info('下载仍在后台执行中，稍后刷新本页即可查看结果')
+    }
+  }, POLL_INTERVAL_MS)
+}
+
 async function triggerDownload() {
-  loading.value = true
+  if (loading.value) {
+    return
+  }
   error.value = ''
+  loading.value = true
+  const beforeRunAt = record.value?.spec?.lastRunAt ?? null
   try {
     const { data } = await axios.post(`${API_PREFIX}/download`)
-    Toast.success(`下载完成：新增 ${data.added} 张，失败 ${data.failed} 张`)
-    await fetchRecord()
+    if (data?.status !== 'started') {
+      throw new Error('下载任务未正常启动')
+    }
+    Toast.success('已开始下载，正在后台执行…')
+    startPolling(beforeRunAt)
   } catch (e: any) {
     const detail = e?.response?.data?.detail || e?.response?.data?.message || e.message
     error.value = String(detail || e)
     Toast.error(`下载失败：${error.value}`)
-  } finally {
     loading.value = false
   }
 }
 
 onMounted(fetchRecord)
+onUnmounted(stopPolling)
 </script>
 
 <template>
@@ -115,7 +158,7 @@ onMounted(fetchRecord)
         <VEmpty
           v-else
           title="尚未运行"
-          message="点击右上角「立即下载」开始从 Pixabay 拉取图片"
+          message="点击右上角「立即下载」开始从 Pixabay 拉取图片，下载在后台执行，本页会自动刷新结果"
         >
           <template #actions>
             <VButton

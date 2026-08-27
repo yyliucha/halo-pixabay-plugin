@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerErrorException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
+import reactor.core.scheduler.Schedulers;
 import run.halo.app.core.extension.attachment.Group;
 import run.halo.app.core.extension.attachment.Policy;
 import run.halo.app.core.extension.service.AttachmentService;
@@ -63,6 +64,23 @@ public class PixabayDownloadService {
                 return Mono.just(DownloadSummary.failed(e.getMessage()));
             })
             .doFinally(signal -> running.set(false));
+    }
+
+    /**
+     * Trigger a download run in the background and return immediately so the
+     * console request never hits a gateway timeout (a run can take minutes).
+     * Progress is observed through the download record by polling.
+     */
+    public void triggerAsync(boolean manual) {
+        runOnce(manual)
+            .subscribeOn(Schedulers.boundedElastic())
+            .subscribe(
+                summary -> log.info(
+                    "[pixabay] background download finished: added={}, failed={}, total={}, "
+                        + "message={}",
+                    summary.added(), summary.failed(), summary.total(), summary.message()),
+                error -> log.error("[pixabay] background download failed unexpectedly", error)
+            );
     }
 
     private Mono<DownloadSummary> doRun(boolean manual) {

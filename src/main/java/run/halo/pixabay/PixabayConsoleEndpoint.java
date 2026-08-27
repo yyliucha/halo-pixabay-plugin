@@ -1,5 +1,6 @@
 package run.halo.pixabay;
 
+import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springdoc.webflux.core.fn.SpringdocRouteBuilder;
@@ -54,7 +55,9 @@ public class PixabayConsoleEndpoint implements CustomEndpoint {
     }
 
     private Mono<ServerResponse> download(ServerRequest request) {
-        return downloadService.runOnce(true)
-            .flatMap(summary -> ServerResponse.ok().bodyValue(summary));
+        // Run the download in the background so a long run cannot time out the
+        // request; the console page polls /record for progress.
+        downloadService.triggerAsync(true);
+        return ServerResponse.ok().bodyValue(Map.of("status", "started"));
     }
 }
