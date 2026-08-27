@@ -1,0 +1,68 @@
+apiVersion: v1alpha1
+kind: Setting
+metadata:
+  name: pixabay-downloader-settings
+spec:
+  forms:
+    - group: basic
+      label: 基本设置
+      formSchema:
+        - $formkit: text
+          name: apiKey
+          label: Pixabay API Key
+          validation: required
+          help: 在 https://pixabay.com/api/docs/ 页面获取
+        - $formkit: text
+          name: keywords
+          label: 搜索关键词
+          value: "mountain,landscape,forest"
+          help: 多个关键词用英文逗号分隔
+        - $formkit: number
+          name: countPerKeyword
+          label: 每关键词下载数量
+          value: 50
+          validation: required|number|min:1
+        - $formkit: select
+          name: imageSize
+          label: 图片尺寸
+          value: original
+          options:
+            - label: 原图
+              value: original
+            - label: 大图 (~1280px)
+              value: large
+            - label: 中等 (640px)
+              value: webformat
+            - label: 缩略图 (150px)
+              value: preview
+        - $formkit: select
+          name: imageType
+          label: 图片类型
+          value: photo
+          options:
+            - label: 照片
+              value: photo
+            - label: 插画
+              value: illustration
+            - label: 矢量图
+              value: vector
+            - label: 全部
+              value: all
+        - $formkit: text
+          name: attachmentPolicy
+          label: 附件存储策略
+          help: 留空时自动选择唯一策略；存在多个存储策略时请填写策略名称
+        - $formkit: text
+          name: attachmentGroup
+          label: 附件分组
+          help: 留空则使用默认分组
+        - $formkit: checkbox
+          name: enabled
+          label: 启用定时下载
+          value: false
+          help: 启用后按下方定时表达式自动下载；首次启用约 1 分钟内会立即执行一次
+        - $formkit: text
+          name: cron
+          label: 定时表达式 (cron)
+          value: "0 12 27 * *"
+          help: "格式: 分 时 日 月 周。例如每月 27 日 12:00 = 0 12 27 * *"

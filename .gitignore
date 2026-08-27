@@ -1,0 +1,21 @@
+# Gradle
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Node / UI
+ui/node_modules/
+ui/dist/
+
+# Logs & local config
+logs/
+.env
+
+# OS
+.DS_Store
+Thumbs.db
