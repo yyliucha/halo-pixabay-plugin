@@ -48,6 +48,7 @@ A [Halo 2.x](https://www.halo.run/) plugin that downloads images from [Pixabay](
 | Keywords | Comma-separated search keywords | `mountain,landscape,forest` |
 | Count per keyword | New images to download per keyword per run | `50` |
 | Image size | original / large / webformat / preview | `original` |
+| Image type | photo / illustration / vector / all | `photo` |
 | Attachment policy | Blank = auto-resolve when only one policy exists; fill in when multiple | - |
 | Attachment group | Attachment group name; blank = default group | - |
 | Enable scheduled downloads | Master switch for the cron trigger | `false` |
