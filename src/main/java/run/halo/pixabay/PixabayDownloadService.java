@@ -65,9 +65,46 @@ public class PixabayDownloadService {
         return doRun(manual)
             .onErrorResume(e -> {
                 log.error("Pixabay download failed", e);
-                return Mono.just(DownloadSummary.failed(e.getMessage()));
+                String message = describeError(e);
+                return recordFailure(message).thenReturn(DownloadSummary.failed(message));
             })
             .doFinally(signal -> running.set(false));
+    }
+
+    /**
+     * Best-effort persistence of a run-level failure into the download record,
+     * so the console page shows the failure reason even when it happens before
+     * any image is processed.
+     */
+    private Mono<Void> recordFailure(String message) {
+        return Mono.defer(() -> loadRecord()
+                .flatMap(record -> {
+                    record.getSpec().setLastRunAt(Instant.now().toString());
+                    record.getSpec().setLastRunMessage("failed: " + message);
+                    record.getSpec().setLastRunError(message);
+                    return saveRecord(record)
+                        .onErrorResume(err -> {
+                            log.warn("[pixabay] failed to persist run failure record", err);
+                            return Mono.empty();
+                        });
+                }))
+            .onErrorResume(err -> Mono.empty());
+    }
+
+    private static String describeError(Throwable e) {
+        StringBuilder sb = new StringBuilder();
+        Throwable current = e;
+        String lastMessage = null;
+        while (current != null && !current.equals(lastMessage)) {
+            lastMessage = current.getMessage();
+            if (current == e) {
+                sb.append(current.getClass().getSimpleName()).append(": ").append(current.getMessage());
+            } else if (current.getMessage() != null && !current.getMessage().isBlank()) {
+                sb.append(" <- ").append(current.getMessage());
+            }
+            current = current.getCause();
+        }
+        return sb.toString();
     }
 
     /**
