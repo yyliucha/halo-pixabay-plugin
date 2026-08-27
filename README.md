@@ -49,8 +49,8 @@ A [Halo 2.x](https://www.halo.run/) plugin that downloads images from [Pixabay](
 | Count per keyword | New images to download per keyword per run | `50` |
 | Image size | original / large / webformat / preview | `original` |
 | Image type | photo / illustration / vector / all | `photo` |
-| Attachment policy | Blank = auto-resolve when only one policy exists; fill in when multiple | - |
-| Attachment group | Attachment group name; blank = default group | - |
+| Attachment policy | Dropdown loaded from Halo storage policies; blank = auto-resolve when only one policy exists | - |
+| Attachment group | Dropdown loaded from Halo attachment groups; blank = default group | - |
 | Enable scheduled downloads | Master switch for the cron trigger | `false` |
 | Cron expression | `min hour day month weekday` | `0 12 27 * *` |
 
