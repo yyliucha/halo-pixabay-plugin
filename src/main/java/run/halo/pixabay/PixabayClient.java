@@ -21,8 +21,8 @@ public class PixabayClient {
 
     private final WebClient webClient;
 
-    public PixabayClient(WebClient.Builder builder) {
-        this(builder, DEFAULT_BASE_URL);
+    public PixabayClient() {
+        this(WebClient.builder(), DEFAULT_BASE_URL);
     }
 
     PixabayClient(WebClient.Builder builder, String baseUrl) {
