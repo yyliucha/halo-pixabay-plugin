@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerErrorException;
@@ -38,6 +39,7 @@ public class PixabayDownloadService {
     private final ReactiveExtensionClient extensionClient;
     private final ReactiveSettingFetcher settingFetcher;
     private final AtomicBoolean running = new AtomicBoolean(false);
+    private final AtomicReference<String> firstUploadError = new AtomicReference<>();
 
     public PixabayDownloadService(PixabayClient pixabayClient,
         AttachmentService attachmentService,
@@ -84,6 +86,7 @@ public class PixabayDownloadService {
     }
 
     private Mono<DownloadSummary> doRun(boolean manual) {
+        firstUploadError.set(null);
         return settingFetcher.fetch("basic", PixabaySetting.class)
             .switchIfEmpty(Mono.error(
                 new IllegalStateException("Plugin settings are not configured yet")))
@@ -124,11 +127,16 @@ public class PixabayDownloadService {
                                 String message = String.format(
                                     "keywords: %d, added: %d, failed: %d", keywords.length, added,
                                     failed);
+                                String firstError = firstUploadError.get();
+                                if (failed > 0 && firstError != null) {
+                                    message = message + "；示例错误: " + firstError;
+                                }
                                 record.getSpec().setLastRunAt(Instant.now().toString());
                                 record.getSpec().setLastRunMessage(message);
                                 record.getSpec().setLastRunAdded(added);
                                 record.getSpec().setLastRunFailed(failed);
                                 record.getSpec().setLastRunTotal(total);
+                                record.getSpec().setLastRunError(firstError);
                                 return saveRecord(record).thenReturn(
                                     DownloadSummary.of(added, 0, failed, total, message));
                             });
@@ -216,10 +224,12 @@ public class PixabayDownloadService {
                 })
                 .onErrorResume(e -> {
                     log.warn("[pixabay] upload failed for image {}: {}", image.id(), e.getMessage());
+                    firstUploadError.compareAndSet(null, e.getMessage());
                     return Mono.just(false);
                 });
         } catch (URISyntaxException | java.net.MalformedURLException e) {
             log.warn("[pixabay] invalid image URL {}: {}", url, e.getMessage());
+            firstUploadError.compareAndSet(null, "invalid image URL: " + e.getMessage());
             return Mono.just(false);
         }
     }

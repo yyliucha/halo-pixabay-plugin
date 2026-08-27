@@ -35,5 +35,7 @@ public class PixabayDownloadRecord extends AbstractExtension {
         private Integer lastRunFailed;
 
         private Integer lastRunTotal;
+
+        private String lastRunError;
     }
 }

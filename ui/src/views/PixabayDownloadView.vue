@@ -61,7 +61,11 @@ function startPolling(beforeRunAt: string | null | undefined) {
       const failed = record.value?.spec?.lastRunFailed ?? 0
       const message = record.value?.spec?.lastRunMessage
       if (added > 0 || failed > 0) {
-        Toast.success(`下载完成：新增 ${added} 张，失败 ${failed} 张`)
+        if (failed > 0) {
+          Toast.warning(`下载完成：新增 ${added} 张，失败 ${failed} 张，失败原因见页面提示`)
+        } else {
+          Toast.success(`下载完成：新增 ${added} 张`)
+        }
       } else {
         Toast.info(message || '下载完成，未新增图片')
       }
@@ -160,6 +164,14 @@ onUnmounted(stopPolling)
           </div>
         </div>
 
+        <VAlert
+          v-if="record?.spec?.lastRunError"
+          type="warning"
+          title="最近一次下载存在失败"
+          :description="record.spec.lastRunError"
+          class="stat-alert"
+        />
+
         <VEmpty
           v-else
           title="尚未运行"
@@ -226,6 +238,10 @@ onUnmounted(stopPolling)
   font-weight: 600;
   color: #111827;
   word-break: break-all;
+}
+
+.stat-alert {
+  margin-top: 12px;
 }
 
 .page-hint {
