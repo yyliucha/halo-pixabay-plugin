@@ -127,6 +127,7 @@ public class PixabayDownloadService {
                                 record.getSpec().setLastRunAt(Instant.now().toString());
                                 record.getSpec().setLastRunMessage(message);
                                 record.getSpec().setLastRunAdded(added);
+                                record.getSpec().setLastRunFailed(failed);
                                 record.getSpec().setLastRunTotal(total);
                                 return saveRecord(record).thenReturn(
                                     DownloadSummary.of(added, 0, failed, total, message));

@@ -58,8 +58,13 @@ function startPolling(beforeRunAt: string | null | undefined) {
       stopPolling()
       loading.value = false
       const added = record.value?.spec?.lastRunAdded ?? 0
+      const failed = record.value?.spec?.lastRunFailed ?? 0
       const message = record.value?.spec?.lastRunMessage
-      Toast.success(`下载完成：新增 ${added} 张${message ? `（${message}）` : ''}`)
+      if (added > 0 || failed > 0) {
+        Toast.success(`下载完成：新增 ${added} 张，失败 ${failed} 张`)
+      } else {
+        Toast.info(message || '下载完成，未新增图片')
+      }
     } else if (Date.now() - startedAt > MAX_POLL_MS) {
       stopPolling()
       loading.value = false

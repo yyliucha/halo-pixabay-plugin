@@ -32,6 +32,8 @@ public class PixabayDownloadRecord extends AbstractExtension {
 
         private Integer lastRunAdded;
 
+        private Integer lastRunFailed;
+
         private Integer lastRunTotal;
     }
 }
