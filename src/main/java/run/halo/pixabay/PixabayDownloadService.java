@@ -120,8 +120,12 @@ public class PixabayDownloadService {
      */
     public void triggerAsync(boolean manual, SecurityContext securityContext) {
         runOnce(manual)
-            .contextWrite(ctx -> ctx.put(
-                SecurityContext.class.getName(), Mono.just(securityContext)))
+            // Spring Security 6.5+/7.x: the reactive holder keys the context with
+            // the SecurityContext CLASS and stores a Mono<SecurityContext> value.
+            // (Putting the class-name string would hit the servlet ThreadLocal
+            // accessor expecting a raw SecurityContext and break context
+            // propagation -> "Failed to obtain R2DBC Connection".)
+            .contextWrite(ctx -> ctx.put(SecurityContext.class, Mono.just(securityContext)))
             .subscribeOn(Schedulers.boundedElastic())
             .subscribe(
                 summary -> log.info(
