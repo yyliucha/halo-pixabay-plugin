@@ -48,14 +48,18 @@ spec:
               value: vector
             - label: 全部
               value: all
-        - $formkit: attachmentPolicy
+        - $formkit: attachmentPolicySelect
           name: attachmentPolicy
           label: 附件存储策略
-          help: 使用 Halo 内置存储策略选择器；留空时自动选择唯一策略
-        - $formkit: group
+          clearable: true
+          placeholder: 不指定（自动选择）
+          help: 选项自动读取 Halo 存储策略；留空时若只有一个策略会自动选择
+        - $formkit: attachmentGroupSelect
           name: attachmentGroup
           label: 附件分组
-          help: 使用 Halo 内置附件分组选择器；留空则使用默认分组
+          clearable: true
+          placeholder: 不指定（默认分组）
+          help: 选项自动读取 Halo 附件分组；留空时使用默认分组
         - $formkit: checkbox
           name: enabled
           label: 启用定时下载
