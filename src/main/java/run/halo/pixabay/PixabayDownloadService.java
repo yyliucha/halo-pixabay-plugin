@@ -209,11 +209,26 @@ public class PixabayDownloadService {
 
     private Mono<Boolean> uploadOne(PixabaySetting settings, Set<String> history,
         String policy, String groupName, PixabayImage image) {
-        String url = image.pickUrl(settings.imageSize());
-        if (url == null) {
+        List<String> urls = urlCandidates(image, settings.imageSize());
+        if (urls.isEmpty()) {
             log.warn("[pixabay] image {} has no usable URL, skipped", image.id());
             return Mono.just(false);
         }
+        return tryUpload(urls, 0, history, policy, groupName, image);
+    }
+
+    /**
+     * Try uploading each candidate URL in order. Pixabay's original-size URLs
+     * (pixabay.com/get/...) can answer 401 to non-browser clients, so fall back
+     * to the next tier (large/webformat/preview from the public CDN) instead of
+     * failing the whole image.
+     */
+    private Mono<Boolean> tryUpload(List<String> urls, int index, Set<String> history,
+        String policy, String groupName, PixabayImage image) {
+        if (index >= urls.size()) {
+            return Mono.just(false);
+        }
+        String url = urls.get(index);
         String filename = image.id() + guessExt(url);
         try {
             return attachmentService.uploadFromUrl(new URI(url).toURL(), policy, groupName,
@@ -223,15 +238,50 @@ public class PixabayDownloadService {
                     return true;
                 })
                 .onErrorResume(e -> {
-                    log.warn("[pixabay] upload failed for image {}: {}", image.id(), e.getMessage());
-                    firstUploadError.compareAndSet(null, e.getMessage());
+                    log.warn("[pixabay] upload failed for image {} via {}: {}", image.id(), url,
+                        e.getMessage());
+                    if (index + 1 < urls.size()) {
+                        return tryUpload(urls, index + 1, history, policy, groupName, image);
+                    }
+                    firstUploadError.compareAndSet(null,
+                        e.getMessage() + " (URL: " + url + ")");
                     return Mono.just(false);
                 });
         } catch (URISyntaxException | java.net.MalformedURLException e) {
             log.warn("[pixabay] invalid image URL {}: {}", url, e.getMessage());
+            if (index + 1 < urls.size()) {
+                return tryUpload(urls, index + 1, history, policy, groupName, image);
+            }
             firstUploadError.compareAndSet(null, "invalid image URL: " + e.getMessage());
             return Mono.just(false);
         }
+    }
+
+    /**
+     * Candidate image URLs for a size tier, in fallback order (same fields as
+     * {@link PixabayImage#pickUrl}, but keeping the full chain so uploads can
+     * degrade to a lower tier on failure instead of giving up).
+     */
+    private static List<String> urlCandidates(PixabayImage image, String size) {
+        List<String> fields = switch (size == null ? "original" : size) {
+            case "large" -> List.of("largeImageURL", "imageURL", "webformatURL", "previewURL");
+            case "webformat" -> List.of("webformatURL", "previewURL");
+            case "preview" -> List.of("previewURL");
+            default -> List.of("imageURL", "largeImageURL", "webformatURL", "previewURL");
+        };
+        List<String> urls = new ArrayList<>();
+        for (String field : fields) {
+            String url = switch (field) {
+                case "imageURL" -> image.imageURL();
+                case "largeImageURL" -> image.largeImageURL();
+                case "webformatURL" -> image.webformatURL();
+                default -> image.previewURL();
+            };
+            if (url != null && !url.isBlank()) {
+                urls.add(url);
+            }
+        }
+        return urls;
     }
 
     private Mono<PixabayDownloadRecord> loadRecord() {

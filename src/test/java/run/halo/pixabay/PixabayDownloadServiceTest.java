@@ -8,7 +8,9 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -160,6 +162,36 @@ class PixabayDownloadServiceTest {
         var captor = org.mockito.ArgumentCaptor.forClass(PixabayDownloadRecord.class);
         verify(extensionClient).update(captor.capture());
         assertTrue(captor.getValue().getSpec().getDownloadedIds().contains("1003"));
+    }
+
+    @Test
+    void fallsBackToNextUrlTierWhenOriginalUploadFails() {
+        mockBasics(setting("mountain", 1));
+        when(pixabayClient.search(eq("test-key"), eq("mountain"), eq(1), eq(3), eq("photo"),
+            eq(true))).thenReturn(Mono.just(
+            new PixabaySearchResponse(1, 1, List.of(image(2001, true)))));
+        // original imageURL fails (e.g. 401 on pixabay.com/get/...), largeImageURL succeeds
+        when(attachmentService.uploadFromUrl(
+            argThat(url -> url != null && url.toString().endsWith("2001.jpg")), eq(POLICY),
+            any(), anyString()))
+            .thenReturn(Mono.error(
+                new RuntimeException("401 UNAUTHORIZED \"Authentication required.\"")));
+        when(attachmentService.uploadFromUrl(
+            argThat(url -> url != null && url.toString().endsWith("2001_1280.jpg")), eq(POLICY),
+            any(), anyString()))
+            .thenAnswer(invocation -> {
+                Attachment attachment = new Attachment();
+                attachment.setMetadata(new Metadata());
+                attachment.getMetadata().setName("fake-attachment");
+                return Mono.just(attachment);
+            });
+
+        StepVerifier.create(service.runOnce(true))
+            .assertNext(summary -> assertEquals(1, summary.added()))
+            .verifyComplete();
+
+        verify(attachmentService, times(2))
+            .uploadFromUrl(any(URL.class), eq(POLICY), any(), anyString());
     }
 
     @Test
