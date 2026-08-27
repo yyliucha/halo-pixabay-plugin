@@ -11,6 +11,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.context.ReactiveSecurityContextHolder;
+import org.springframework.security.core.context.SecurityContext;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerErrorException;
 import reactor.core.publisher.Flux;
@@ -72,9 +74,17 @@ public class PixabayDownloadService {
      * Trigger a download run in the background and return immediately so the
      * console request never hits a gateway timeout (a run can take minutes).
      * Progress is observed through the download record by polling.
+     *
+     * <p>The Halo attachment upload API requires an authenticated
+     * {@link SecurityContext} on the executing thread (it fails with
+     * {@code 401 UNAUTHORIZED "Authentication required."} otherwise), so the
+     * context captured from the triggering request must be propagated into the
+     * background subscription.</p>
      */
-    public void triggerAsync(boolean manual) {
+    public void triggerAsync(boolean manual, SecurityContext securityContext) {
         runOnce(manual)
+            .contextWrite(ctx -> ctx.put(
+                SecurityContext.class.getName(), Mono.just(securityContext)))
             .subscribeOn(Schedulers.boundedElastic())
             .subscribe(
                 summary -> log.info(

@@ -4,10 +4,13 @@ import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springdoc.webflux.core.fn.SpringdocRouteBuilder;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.reactive.function.server.RouterFunction;
 import org.springframework.web.reactive.function.server.ServerRequest;
 import org.springframework.web.reactive.function.server.ServerResponse;
+import org.springframework.web.server.ResponseStatusException;
 import reactor.core.publisher.Mono;
 import run.halo.app.core.extension.endpoint.CustomEndpoint;
 import run.halo.app.extension.GroupVersion;
@@ -56,8 +59,15 @@ public class PixabayConsoleEndpoint implements CustomEndpoint {
 
     private Mono<ServerResponse> download(ServerRequest request) {
         // Run the download in the background so a long run cannot time out the
-        // request; the console page polls /record for progress.
-        downloadService.triggerAsync(true);
-        return ServerResponse.ok().bodyValue(Map.of("status", "started"));
+        // request; the console page polls /record for progress. The security
+        // context of the current (authed) request must be passed along, since
+        // Halo's attachment upload API requires one.
+        return ReactiveSecurityContextHolder.getContext()
+            .flatMap(securityContext -> {
+                downloadService.triggerAsync(true, securityContext);
+                return ServerResponse.ok().bodyValue(Map.of("status", "started"));
+            })
+            .switchIfEmpty(Mono.error(new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                "Authentication required.")));
     }
 }

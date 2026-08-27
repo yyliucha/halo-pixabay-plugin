@@ -3,8 +3,12 @@ package run.halo.pixabay;
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextImpl;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import run.halo.app.extension.ReactiveExtensionClient;
@@ -43,15 +47,24 @@ public class PixabayDownloadScheduler {
                 .defaultIfEmpty("")
                 .map(lastRunAt -> isDue(lastRunAt, settings.cron(), ZonedDateTime.now()))
                 .filter(Boolean::booleanValue)
-                .flatMap(due -> downloadService.runOnce(false)))
-            .doOnNext(summary -> log.info(
-                "[pixabay] scheduled run finished: added={}, failed={}, message={}",
-                summary.added(), summary.failed(), summary.message()))
+                .flatMap(due -> {
+                    // Scheduled runs have no request thread to borrow an
+                    // authenticated SecurityContext from, so use a synthetic
+                    // identity (required by Halo's attachment upload API).
+                    downloadService.triggerAsync(false, scheduledSecurityContext());
+                    return Mono.empty();
+                }))
             .onErrorResume(e -> {
                 log.warn("[pixabay] scheduled tick failed: {}", e.getMessage());
                 return Mono.empty();
             })
             .subscribe();
+    }
+
+    private static SecurityContext scheduledSecurityContext() {
+        var authentication = new UsernamePasswordAuthenticationToken(
+            "pixabay-downloader", "", List.of());
+        return new SecurityContextImpl(authentication);
     }
 
     /**
