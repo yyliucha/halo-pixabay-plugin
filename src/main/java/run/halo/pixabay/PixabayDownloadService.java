@@ -2,6 +2,7 @@ package run.halo.pixabay;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -13,6 +14,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
+import org.springframework.core.io.buffer.DefaultDataBufferFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerErrorException;
 import reactor.core.publisher.Flux;
@@ -305,24 +307,22 @@ public class PixabayDownloadService {
     private Mono<Boolean> uploadOnce(String url, String filename,
         AtomicReference<String> lastError, Set<String> history, String policy, String groupName,
         PixabayImage image) {
-        try {
-            return attachmentService.uploadFromUrl(new URI(url).toURL(), policy, groupName,
-                    filename)
-                .map(attachment -> {
-                    history.add(String.valueOf(image.id()));
-                    return true;
-                })
-                .onErrorResume(e -> {
-                    log.warn("[pixabay] upload failed for image {} via {}: {}", image.id(), url,
-                        e.getMessage());
-                    lastError.set(e.getMessage() + " (URL: " + url + ")");
-                    return Mono.just(false);
-                });
-        } catch (URISyntaxException | java.net.MalformedURLException e) {
-            log.warn("[pixabay] invalid image URL {}: {}", url, e.getMessage());
-            lastError.set("invalid image URL " + url + ": " + e.getMessage());
-            return Mono.just(false);
-        }
+        // Download with our own client (clean error handling, no pooled-connection
+        // poisoning) then upload the bytes via the authenticated upload API.
+        return pixabayClient.download(url)
+            .timeout(Duration.ofSeconds(30))
+            .flatMap(bytes -> attachmentService.upload(policy, groupName, filename,
+                Flux.just(DefaultDataBufferFactory.sharedInstance.wrap(bytes)), null))
+            .map(attachment -> {
+                history.add(String.valueOf(image.id()));
+                return true;
+            })
+            .onErrorResume(e -> {
+                log.warn("[pixabay] upload failed for image {} via {}: {}", image.id(), url,
+                    e.getMessage());
+                lastError.set(e.getMessage() + " (URL: " + url + ")");
+                return Mono.just(false);
+            });
     }
 
     /**

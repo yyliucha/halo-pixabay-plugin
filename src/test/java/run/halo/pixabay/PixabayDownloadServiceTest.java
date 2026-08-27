@@ -6,16 +6,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
-import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import java.net.URI;
-import java.net.URL;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -87,6 +85,17 @@ class PixabayDownloadServiceTest {
             .thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
     }
 
+    private void mockDownloadAndUpload() {
+        when(pixabayClient.download(anyString())).thenReturn(Mono.just(new byte[] {1, 2, 3}));
+        when(attachmentService.upload(eq(POLICY), any(), anyString(), any(Flux.class), any()))
+            .thenAnswer(invocation -> {
+                Attachment attachment = new Attachment();
+                attachment.setMetadata(new Metadata());
+                attachment.getMetadata().setName("fake-attachment");
+                return Mono.just(attachment);
+            });
+    }
+
     @Test
     void firstRunDownloadsNewImagesAndRecordsHistory() {
         mockBasics(setting("mountain", 3));
@@ -95,13 +104,7 @@ class PixabayDownloadServiceTest {
             eq(true))).thenReturn(Mono.just(
             new PixabaySearchResponse(3, 3, List.of(image(1001, true), image(1002, false),
                 image(1003, true)))));
-        when(attachmentService.uploadFromUrl(any(URL.class), eq(POLICY), any(), anyString()))
-            .thenAnswer(invocation -> {
-                Attachment attachment = new Attachment();
-                attachment.setMetadata(new Metadata());
-                attachment.getMetadata().setName("fake-attachment");
-                return Mono.just(attachment);
-            });
+        mockDownloadAndUpload();
 
         StepVerifier.create(service.runOnce(true))
             .assertNext(summary -> {
@@ -147,13 +150,7 @@ class PixabayDownloadServiceTest {
         when(pixabayClient.search(eq("test-key"), eq("mountain"), eq(2), eq(3), eq("photo"),
             eq(true))).thenReturn(Mono.just(
             new PixabaySearchResponse(0, 3, List.of())));
-        when(attachmentService.uploadFromUrl(any(URL.class), eq(POLICY), any(), anyString()))
-            .thenAnswer(invocation -> {
-                Attachment attachment = new Attachment();
-                attachment.setMetadata(new Metadata());
-                attachment.getMetadata().setName("fake-attachment");
-                return Mono.just(attachment);
-            });
+        mockDownloadAndUpload();
 
         StepVerifier.create(service.runOnce(true))
             .assertNext(summary -> assertEquals(1, summary.added()))
@@ -165,21 +162,20 @@ class PixabayDownloadServiceTest {
     }
 
     @Test
-    void fallsBackToNextUrlTierWhenOriginalUploadFails() {
+    void fallsBackToNextUrlTierWhenDownloadFails() {
         mockBasics(setting("mountain", 1));
         when(pixabayClient.search(eq("test-key"), eq("mountain"), eq(1), eq(3), eq("photo"),
             eq(true))).thenReturn(Mono.just(
             new PixabaySearchResponse(1, 1, List.of(image(2001, true)))));
-        // original imageURL (deduped with derived cdn URL) fails (e.g. 429 on
-        // pixabay.com/get/...), the derived CDN large URL succeeds
-        when(attachmentService.uploadFromUrl(
-            argThat(url -> url != null && url.toString().endsWith("2001.jpg")), eq(POLICY),
-            any(), anyString()))
-            .thenReturn(Mono.error(
-                new RuntimeException("429 TOO_MANY_REQUESTS")));
-        when(attachmentService.uploadFromUrl(
-            argThat(url -> url != null && url.toString().endsWith("2001_1280.jpg")), eq(POLICY),
-            any(), anyString()))
+        // derived CDN original URL fails (403), the derived CDN large URL succeeds
+        when(pixabayClient.download(anyString())).thenAnswer(invocation -> {
+            String url = invocation.getArgument(0);
+            if (url != null && url.endsWith("2001.jpg")) {
+                return Mono.error(new RuntimeException("HTTP 403 FORBIDDEN"));
+            }
+            return Mono.just(new byte[] {1, 2, 3});
+        });
+        when(attachmentService.upload(eq(POLICY), any(), anyString(), any(Flux.class), any()))
             .thenAnswer(invocation -> {
                 Attachment attachment = new Attachment();
                 attachment.setMetadata(new Metadata());
@@ -192,8 +188,9 @@ class PixabayDownloadServiceTest {
             .verifyComplete();
 
         // 2 attempts on the failing URL (retry once) + 1 success on the fallback
-        verify(attachmentService, times(3))
-            .uploadFromUrl(any(URL.class), eq(POLICY), any(), anyString());
+        verify(pixabayClient, times(3)).download(anyString());
+        verify(attachmentService, times(1)).upload(eq(POLICY), any(), anyString(),
+            any(Flux.class), any());
     }
 
     @Test

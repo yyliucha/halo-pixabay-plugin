@@ -32,6 +32,29 @@ public class PixabayClient {
     }
 
     /**
+     * Download image bytes from an absolute URL. Error responses (e.g. 403/429)
+     * are drained via {@code releaseBody()} so the pooled connection is NOT left
+     * in a cancelled state (Halo's own uploadFromUrl leaks such connections,
+     * poisoning subsequent downloads with
+     * "Rejecting additional inbound receiver").
+     *
+     * @param url absolute image URL
+     * @return image bytes
+     */
+    public Mono<byte[]> download(String url) {
+        return webClient.get()
+            .uri(url)
+            .exchangeToMono(response -> {
+                if (response.statusCode().is2xxSuccessful()) {
+                    return response.bodyToMono(byte[].class);
+                }
+                return response.releaseBody()
+                    .then(Mono.error(new IllegalStateException(
+                        "HTTP " + response.statusCode().value())));
+            });
+    }
+
+    /**
      * Search images for one keyword page.
      */
     public Mono<PixabaySearchResponse> search(String apiKey, String query, int page,
