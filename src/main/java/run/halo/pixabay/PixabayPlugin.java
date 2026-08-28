@@ -1,5 +1,6 @@
 package run.halo.pixabay;
 
+import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.stereotype.Component;
 import run.halo.app.extension.Scheme;
 import run.halo.app.extension.SchemeManager;
@@ -18,6 +19,7 @@ import run.halo.app.plugin.PluginContext;
  * @since 1.0.0
  */
 @Component
+@EnableScheduling
 public class PixabayPlugin extends BasePlugin {
 
     private final SchemeManager schemeManager;
