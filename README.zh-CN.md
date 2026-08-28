@@ -1,4 +1,4 @@
-# Halo Pixabay 图片下载插件
+# Halo Pixabay 图库插件
 
 [![Java](https://img.shields.io/badge/Java-21-blue.svg)](https://www.java.com/)
 [![Halo](https://img.shields.io/badge/Halo-2.20%2B-4b5563.svg)](https://www.halo.run/)
@@ -60,6 +60,15 @@
 
 - `POST /apis/console.api.pixabay.halo.run/v1alpha1/plugins/pixabay-downloader/download` - 手动触发一次下载
 - `GET /apis/console.api.pixabay.halo.run/v1alpha1/plugins/pixabay-downloader/record` - 获取下载历史记录
+
+## 第三方服务与数据说明
+
+- 本插件调用 **Pixabay 官方 API**（`pixabay.com/api/`）搜索图片，并从 Pixabay 图片 CDN（`cdn.pixabay.com` / `pixabay.com/get/`）下载图片到你的 Halo 附件库。
+- **数据仅流向 Pixabay**：发送给 Pixabay 的内容只有搜索关键词、API Key 与图片尺寸/类型参数；**不会**上传或导出你的站点内容、用户数据、附件、配置或日志。
+- 需要在设置中填写 **Pixabay API Key**：在 https://pixabay.com/api/docs/ 凭免费账号申请即可，费用由 Pixabay 按其政策决定，与本插件无关。
+- 所有外部请求均带超时（30 秒）与重试/降级策略（自动尝试多档图片 URL）。
+- 下载图片的使用遵循 [Pixabay Content License](https://pixabay.com/service/license-summary/)。
+- 本插件与 Pixabay 官方无任何隶属、背书或合作关系，仅在标识"图片来源"时使用其名称。
 
 ## 开发
 

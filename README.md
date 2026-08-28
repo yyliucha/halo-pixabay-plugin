@@ -1,4 +1,4 @@
-# Halo Pixabay Downloader Plugin
+# Halo Pixabay Gallery Plugin
 
 [![Java](https://img.shields.io/badge/Java-21-blue.svg)](https://www.java.com/)
 [![Halo](https://img.shields.io/badge/Halo-2.20%2B-4b5563.svg)](https://www.halo.run/)
@@ -60,6 +60,15 @@ A [Halo 2.x](https://www.halo.run/) plugin that downloads images from [Pixabay](
 
 - `POST /apis/console.api.pixabay.halo.run/v1alpha1/plugins/pixabay-downloader/download` - trigger a manual run
 - `GET /apis/console.api.pixabay.halo.run/v1alpha1/plugins/pixabay-downloader/record` - download history record
+
+## Third-party services & data disclosure
+
+- This plugin calls the **Pixabay official API** (`pixabay.com/api/`) to search images and downloads images from Pixabay's image CDN (`cdn.pixabay.com` / `pixabay.com/get/`) into your Halo attachment library.
+- **Data flows only to Pixabay**: search keywords, the API key and image size/type parameters are sent to Pixabay; your site content, user data, attachments, configs and logs are **never** uploaded or exported.
+- A **Pixabay API Key** is required in settings: create one for free at https://pixabay.com/api/docs/ (fees are determined by Pixabay's own policy).
+- All external requests have timeouts (30s) plus retry/degradation strategy (automatic fallback across image URL tiers).
+- Downloaded images follow the [Pixabay Content License](https://pixabay.com/service/license-summary/).
+- This plugin is not affiliated with, endorsed by, or sponsored by Pixabay.
 
 ## Development
 

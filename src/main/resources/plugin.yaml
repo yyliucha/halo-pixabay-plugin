@@ -17,7 +17,7 @@ spec:
   repo: https://github.com/yyliucha/halo-pixabay-plugin
   homepage: https://github.com/yyliucha/halo-pixabay-plugin#readme
   issues: https://github.com/yyliucha/halo-pixabay-plugin/issues
-  displayName: "Pixabay 图片下载"
+  displayName: "Pixabay 图库"
   description: "定时从 Pixabay 官方 API 下载图片到附件库，支持全局去重、手动触发与下载记录。"
   license:
     - name: "MIT"
