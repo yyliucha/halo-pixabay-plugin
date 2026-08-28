@@ -1,14 +1,11 @@
-package run.halo.pixabay;
+package com.yyliucha.pixabay;
 
 import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
-import java.util.List;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContext;
-import org.springframework.security.core.context.SecurityContextImpl;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
 import run.halo.app.extension.ReactiveExtensionClient;
@@ -62,9 +59,7 @@ public class PixabayDownloadScheduler {
     }
 
     private static SecurityContext scheduledSecurityContext() {
-        var authentication = new UsernamePasswordAuthenticationToken(
-            "pixabay-downloader", "", List.of());
-        return new SecurityContextImpl(authentication);
+        return SystemIdentity.securityContext();
     }
 
     /**

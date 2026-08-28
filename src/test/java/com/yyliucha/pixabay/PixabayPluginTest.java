@@ -1,4 +1,4 @@
-package run.halo.pixabay;
+package com.yyliucha.pixabay;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;

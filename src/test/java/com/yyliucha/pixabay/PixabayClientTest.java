@@ -1,4 +1,4 @@
-package run.halo.pixabay;
+package com.yyliucha.pixabay;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;

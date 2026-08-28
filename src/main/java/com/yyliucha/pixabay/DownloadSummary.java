@@ -1,4 +1,4 @@
-package run.halo.pixabay;
+package com.yyliucha.pixabay;
 
 /**
  * Result of one download run, returned to the console UI.

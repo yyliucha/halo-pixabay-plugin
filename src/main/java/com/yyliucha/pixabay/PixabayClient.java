@@ -1,4 +1,4 @@
-package run.halo.pixabay;
+package com.yyliucha.pixabay;
 
 import java.time.Duration;
 import lombok.extern.slf4j.Slf4j;

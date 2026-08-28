@@ -1,4 +1,4 @@
-package run.halo.pixabay;
+package com.yyliucha.pixabay;
 
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -6,7 +6,9 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -21,6 +23,7 @@ import org.springframework.web.server.ServerErrorException;
 import reactor.core.publisher.Flux;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
+import run.halo.app.core.extension.attachment.Attachment;
 import run.halo.app.core.extension.attachment.Group;
 import run.halo.app.core.extension.attachment.Policy;
 import run.halo.app.core.extension.service.AttachmentService;
@@ -165,36 +168,89 @@ public class PixabayDownloadService {
             return Mono.just(DownloadSummary.failed("No keywords configured"));
         }
 
+        List<GroupRun> groups = groupKeywords(settings, keywords);
         return loadRecord()
-            .flatMap(record -> resolvePolicy(settings)
-                .flatMap(policy -> resolveGroup(settings)
-                    .flatMap(groupName -> {
-                        String grp = (groupName == null || groupName.isBlank()) ? null : groupName;
-                        return Flux.fromArray(keywords)
-                            .concatMap(keyword -> downloadKeyword(settings, record, policy, grp,
-                                keyword))
-                            .collectList()
-                            .flatMap(results -> {
-                                int added = results.stream().mapToInt(r -> r.added).sum();
-                                int failed = results.stream().mapToInt(r -> r.failed).sum();
-                                int total = results.stream().mapToInt(r -> r.total).sum();
-                                String message = String.format(
-                                    "keywords: %d, added: %d, failed: %d", keywords.length, added,
-                                    failed);
-                                String firstError = firstUploadError.get();
-                                if (failed > 0 && firstError != null) {
-                                    message = message + "；示例错误: " + firstError;
-                                }
-                                record.getSpec().setLastRunAt(Instant.now().toString());
-                                record.getSpec().setLastRunMessage(message);
-                                record.getSpec().setLastRunAdded(added);
-                                record.getSpec().setLastRunFailed(failed);
-                                record.getSpec().setLastRunTotal(total);
-                                record.getSpec().setLastRunError(firstError);
-                                return saveRecord(record).thenReturn(
-                                    DownloadSummary.of(added, 0, failed, total, message));
-                            });
-                    })));
+            .flatMap(record -> Flux.fromIterable(groups)
+                .concatMap(group -> runGroup(group, settings, record))
+                .collectList()
+                .flatMap(results -> {
+                    int added = results.stream().mapToInt(r -> r.added).sum();
+                    int failed = results.stream().mapToInt(r -> r.failed).sum();
+                    int total = results.stream().mapToInt(r -> r.total).sum();
+                    String message = results.stream()
+                        .map(r -> r.message)
+                        .collect(java.util.stream.Collectors.joining("；"));
+                    String firstError = firstUploadError.get();
+                    if (failed > 0 && firstError != null) {
+                        message = message + "；示例错误: " + firstError;
+                    }
+                    record.getSpec().setLastRunAt(Instant.now().toString());
+                    record.getSpec().setLastRunMessage(message);
+                    record.getSpec().setLastRunAdded(added);
+                    record.getSpec().setLastRunFailed(failed);
+                    record.getSpec().setLastRunTotal(total);
+                    record.getSpec().setLastRunError(firstError);
+                    return saveRecord(record).thenReturn(
+                        DownloadSummary.of(added, 0, failed, total, message));
+                }));
+    }
+
+    /**
+     * Group keywords by their configured mapping: keywords sharing the same
+     * policy/group mapping are downloaded together; unmapped keywords fall back
+     * to the global policy/group.
+     */
+    private static List<GroupRun> groupKeywords(PixabaySetting settings, String[] keywords) {
+        Map<String, PixabaySetting.KeywordMapping> byKeyword = new LinkedHashMap<>();
+        for (PixabaySetting.KeywordMapping mapping : settings.keywordMappings()) {
+            if (mapping != null && mapping.keyword() != null && !mapping.keyword().isBlank()) {
+                byKeyword.putIfAbsent(mapping.keyword().trim(), mapping);
+            }
+        }
+        Map<PixabaySetting.KeywordMapping, List<String>> groups = new LinkedHashMap<>();
+        for (String keyword : keywords) {
+            PixabaySetting.KeywordMapping mapping = byKeyword.get(keyword);
+            groups.computeIfAbsent(mapping, k -> new ArrayList<>()).add(keyword);
+        }
+        List<GroupRun> result = new ArrayList<>();
+        for (var entry : groups.entrySet()) {
+            result.add(new GroupRun(entry.getKey(), entry.getValue()));
+        }
+        return result;
+    }
+
+    private Mono<GroupResult> runGroup(GroupRun group, PixabaySetting settings,
+        PixabayDownloadRecord record) {
+        var mapping = group.mapping();
+        String policyRef = (mapping != null && mapping.policy() != null
+            && !mapping.policy().isBlank()) ? mapping.policy().trim() : settings.attachmentPolicy();
+        String groupRef = (mapping != null && mapping.group() != null
+            && !mapping.group().isBlank()) ? mapping.group().trim() : settings.attachmentGroup();
+        return resolvePolicy(policyRef)
+            .flatMap(policy -> resolveGroup(groupRef)
+                .flatMap(groupName -> {
+                    String grp = (groupName == null || groupName.isBlank()) ? null : groupName;
+                    return Flux.fromIterable(group.keywords())
+                        .concatMap(keyword -> downloadKeyword(settings, record, policy, grp, keyword))
+                        .collectList()
+                        .map(results -> {
+                            int added = results.stream().mapToInt(r -> r.added).sum();
+                            int failed = results.stream().mapToInt(r -> r.failed).sum();
+                            int total = results.stream().mapToInt(r -> r.total).sum();
+                            String label = mapping == null ? "全局"
+                                : mapping.keyword().trim() + "→"
+                                    + (policyRef.isBlank() ? "全局策略" : policyRef);
+                            return new GroupResult(
+                                label + ": added " + added + ", failed " + failed,
+                                added, failed, total);
+                        });
+                }));
+    }
+
+    record GroupRun(PixabaySetting.KeywordMapping mapping, List<String> keywords) {
+    }
+
+    record GroupResult(String message, int added, int failed, int total) {
     }
 
     /**
@@ -404,9 +460,9 @@ public class PixabayDownloadService {
         return extensionClient.update(record).then();
     }
 
-    private Mono<String> resolvePolicy(PixabaySetting settings) {
-        if (settings.attachmentPolicy() != null && !settings.attachmentPolicy().isBlank()) {
-            return Mono.just(settings.attachmentPolicy().trim());
+    private Mono<String> resolvePolicy(String policyRef) {
+        if (policyRef != null && !policyRef.isBlank()) {
+            return Mono.just(policyRef.trim());
         }
         return extensionClient.list(Policy.class, null, null, 0, 10)
             .map(result -> result.getItems().stream()
@@ -428,21 +484,104 @@ public class PixabayDownloadService {
             });
     }
 
-    private Mono<String> resolveGroup(PixabaySetting settings) {
-        String group = settings.attachmentGroup();
-        if (group == null || group.isBlank()) {
+    private Mono<String> resolveGroup(String groupRef) {
+        if (groupRef == null || groupRef.isBlank()) {
             return Mono.just("");
         }
-        String groupName = group.trim();
+        String groupName = groupRef.trim();
         return extensionClient.fetch(Group.class, groupName)
             .switchIfEmpty(Mono.defer(() -> {
                 var newGroup = new Group();
                 newGroup.setMetadata(new run.halo.app.extension.Metadata());
                 newGroup.getMetadata().setName(groupName);
+                newGroup.setSpec(new Group.GroupSpec());
                 newGroup.getSpec().setDisplayName(groupName);
                 return extensionClient.create(newGroup).then(Mono.empty());
             }))
             .thenReturn(groupName);
+    }
+
+    /**
+     * Download one fresh image for the given keyword and return its permalink
+     * URL (used by the article auto-cover feature). The image is marked as
+     * downloaded so later batch runs keep the global dedupe.
+     */
+    public Mono<String> downloadForCover(String keyword) {
+        return settingFetcher.fetch("basic", PixabaySetting.class)
+            .switchIfEmpty(Mono.error(
+                new IllegalStateException("Plugin settings are not configured yet")))
+            .flatMap(settings -> {
+                if (settings.apiKey() == null || settings.apiKey().isBlank()) {
+                    return Mono.error(
+                        new IllegalArgumentException("Pixabay API key is not configured"));
+                }
+                final String policyRef = settings.attachmentPolicy();
+                final String groupRef = settings.attachmentGroup();
+                return resolvePolicy(policyRef)
+                    .flatMap(policy -> resolveGroup(groupRef)
+                        .flatMap(groupName -> {
+                            String grp = (groupName == null || groupName.isBlank())
+                                ? null : groupName;
+                            return pixabayClient.search(settings.apiKey(), keyword, 1, 5,
+                                    settings.imageType(), true)
+                                .flatMap(response -> pickCoverImage(response, settings))
+                                .switchIfEmpty(Mono.error(new IllegalStateException(
+                                    "No usable image found for keyword: " + keyword)))
+                                .flatMap(image -> attemptAttachmentDownload(
+                                    urlCandidates(image, settings.imageSize()), 0, image, policy,
+                                    grp)
+                                    .flatMap(attachment -> markDownloaded(image.id())
+                                        .thenReturn(attachment)))
+                                .flatMap(attachment ->
+                                    attachmentService.getPermalink(attachment)
+                                        .map(URI::toString));
+                        }));
+            });
+    }
+
+    private static Mono<PixabayImage> pickCoverImage(PixabaySearchResponse response,
+        PixabaySetting settings) {
+        List<PixabayImage> hits = response.hits() == null ? List.of() : response.hits();
+        for (PixabayImage hit : hits) {
+            if (!urlCandidates(hit, settings.imageSize()).isEmpty()) {
+                return Mono.just(hit);
+            }
+        }
+        return Mono.empty();
+    }
+
+    private Mono<Attachment> attemptAttachmentDownload(List<String> urls, int index,
+        PixabayImage image, String policy, String groupName) {
+        if (index >= urls.size()) {
+            return Mono.error(new IllegalStateException("Failed to download image " + image.id()));
+        }
+        String url = urls.get(index);
+        String filename = image.id() + guessExt(url);
+        return pixabayClient.download(url)
+            .timeout(Duration.ofSeconds(30))
+            .flatMap(bytes -> attachmentService.upload(policy, groupName, filename,
+                Flux.just(DefaultDataBufferFactory.sharedInstance.wrap(bytes)),
+                guessMediaType(filename)))
+            .onErrorResume(e -> {
+                log.warn("[pixabay] cover download failed for image {} via {}: {}", image.id(),
+                    url, e.getMessage());
+                return attemptAttachmentDownload(urls, index + 1, image, policy, groupName);
+            });
+    }
+
+    /**
+     * Best-effort: record that the image id is downloaded (global dedupe).
+     */
+    private Mono<Void> markDownloaded(long imageId) {
+        return loadRecord()
+            .flatMap(record -> {
+                record.getSpec().getDownloadedIds().add(String.valueOf(imageId));
+                return saveRecord(record);
+            })
+            .onErrorResume(e -> {
+                log.warn("[pixabay] failed to mark image {} downloaded", imageId, e);
+                return Mono.empty();
+            });
     }
 
     private static String guessExt(String url) {

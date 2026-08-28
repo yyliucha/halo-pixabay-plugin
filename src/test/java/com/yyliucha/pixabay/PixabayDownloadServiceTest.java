@@ -1,4 +1,4 @@
-package run.halo.pixabay;
+package com.yyliucha.pixabay;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -58,7 +58,7 @@ class PixabayDownloadServiceTest {
 
     private PixabaySetting setting(String keywords, int count) {
         return new PixabaySetting("test-key", keywords, count, "original", "photo", "", "", true,
-            "0 12 27 * *");
+            "0 12 27 * *", false, List.of());
     }
 
     private PixabayImage image(long id, boolean withOriginal) {
@@ -194,10 +194,53 @@ class PixabayDownloadServiceTest {
     }
 
     @Test
+    void mappedKeywordUsesDedicatedPolicyAndGroup() {
+        var settings = new PixabaySetting("test-key", "mountain,flower", 1, "original", "photo",
+            "", "", true, "0 12 27 * *", false,
+            List.of(new PixabaySetting.KeywordMapping("mountain", "map-policy", "map-group")));
+        mockBasics(settings);
+        when(extensionClient.fetch(eq(run.halo.app.core.extension.attachment.Group.class),
+            anyString())).thenReturn(Mono.empty());
+        when(extensionClient.create(any(run.halo.app.core.extension.attachment.Group.class)))
+            .thenAnswer(invocation -> Mono.just(invocation.getArgument(0)));
+        when(pixabayClient.search(eq("test-key"), eq("mountain"), eq(1), eq(3), eq("photo"),
+            eq(true))).thenReturn(Mono.just(
+            new PixabaySearchResponse(1, 1, List.of(image(3001, true)))));
+        when(pixabayClient.search(eq("test-key"), eq("flower"), eq(1), eq(3), eq("photo"),
+            eq(true))).thenReturn(Mono.just(
+            new PixabaySearchResponse(1, 1, List.of(image(3002, true)))));
+        when(pixabayClient.download(anyString())).thenReturn(Mono.just(new byte[] {1, 2, 3}));
+        when(attachmentService.upload(eq("map-policy"), eq("map-group"), anyString(),
+            any(Flux.class), any())).thenAnswer(invocation -> {
+                Attachment attachment = new Attachment();
+                attachment.setMetadata(new Metadata());
+                attachment.getMetadata().setName("fake-attachment");
+                return Mono.just(attachment);
+            });
+        when(attachmentService.upload(eq(POLICY), isNull(), anyString(), any(Flux.class),
+            any())).thenAnswer(invocation -> {
+                Attachment attachment = new Attachment();
+                attachment.setMetadata(new Metadata());
+                attachment.getMetadata().setName("fake-attachment");
+                return Mono.just(attachment);
+            });
+
+        StepVerifier.create(service.runOnce(true))
+            .assertNext(summary -> assertEquals(2, summary.added()))
+            .verifyComplete();
+
+        // mapped keyword uses its own policy/group; unmapped falls back to global
+        verify(attachmentService).upload(eq("map-policy"), eq("map-group"), anyString(),
+            any(Flux.class), any());
+        verify(attachmentService).upload(eq(POLICY), isNull(), anyString(), any(Flux.class),
+            any());
+    }
+
+    @Test
     void missingApiKeyFailsGracefully() {
         when(settingFetcher.fetch(eq("basic"), eq(PixabaySetting.class)))
             .thenReturn(Mono.just(new PixabaySetting("", "mountain", 3, "original", "photo", "",
-                "", true, "0 12 27 * *")));
+                "", true, "0 12 27 * *", false, List.of())));
         StepVerifier.create(service.runOnce(true))
             .assertNext(summary -> assertTrue(summary.message().contains("API key")))
             .verifyComplete();

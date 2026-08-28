@@ -1,4 +1,4 @@
-package run.halo.pixabay;
+package com.yyliucha.pixabay;
 
 import java.util.Map;
 import lombok.RequiredArgsConstructor;

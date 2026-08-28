@@ -70,3 +70,28 @@ spec:
           label: 定时表达式 (cron)
           value: "0 12 27 * *"
           help: "格式: 分 时 日 月 周（5段）。每5分钟 = */5 * * * *；每天 10:20 = 20 10 * * *；每月27日12:00 = 0 12 27 * *。兼容带秒的6段写法（如 0 20 10 * * ?，自动忽略秒及 ?）"
+        - $formkit: repeater
+          name: keywordMappings
+          label: 关键词映射（按关键词归档）
+          help: 为每个关键词独立指定存储策略与附件分组；未配置的关键词使用上方的全局策略/分组
+          children:
+            - $formkit: text
+              name: keyword
+              label: 关键词
+              validation: required
+              help: 与「搜索关键词」中的一个关键词完全一致
+            - $formkit: attachmentPolicySelect
+              name: policy
+              label: 附件存储策略
+              clearable: true
+              placeholder: 继承全局策略
+            - $formkit: attachmentGroupSelect
+              name: group
+              label: 附件分组
+              clearable: true
+              placeholder: 继承全局分组
+        - $formkit: checkbox
+          name: articleCoverEnabled
+          label: 发布文章自动配图
+          value: false
+          help: 开启后，发布无封面文章时自动按文章标签/标题关键词从 Pixabay 寻找并下载一张图片设为文章封面，图片同时进入附件库与去重记录
