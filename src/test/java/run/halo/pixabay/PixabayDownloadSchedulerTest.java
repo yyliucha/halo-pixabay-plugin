@@ -44,6 +44,16 @@ class PixabayDownloadSchedulerTest {
     }
 
     @Test
+    void acceptsQuartzStyleSixFieldsWithQuestionMark() {
+        // "sec min hour dom month dow" with ? = daily 10:20
+        ZonedDateTime at = ZonedDateTime.of(2026, 8, 28, 10, 20, 11, 0, ZoneId.of("Asia/Shanghai"));
+        assertTrue(PixabayDownloadScheduler.isDue("", "11 20 10 * * ?", at));
+        ZonedDateTime before = ZonedDateTime.of(2026, 8, 28, 10, 21, 0, 0,
+            ZoneId.of("Asia/Shanghai"));
+        assertFalse(PixabayDownloadScheduler.isDue("2026-08-28T02:20:00Z", "11 20 10 * * ?", before));
+    }
+
+    @Test
     void invalidCronNeverDue() {
         assertFalse(PixabayDownloadScheduler.isDue("", "not a cron", NOW));
         assertFalse(PixabayDownloadScheduler.isDue("", "", NOW));

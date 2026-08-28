@@ -25,13 +25,18 @@ public class CronMatcher {
     public static CronMatcher parse(String expression) {
         CronMatcher matcher = new CronMatcher();
         String[] parts = expression.trim().split("\\s+");
-        if (parts.length != 5) {
+        // Accept Quartz-style 6-field expressions (sec min hour dom month dow):
+        // drop the seconds field. '?' (not-specified) is treated as '*'.
+        if (parts.length == 6) {
+            parts = java.util.Arrays.copyOfRange(parts, 1, 6);
+        } else if (parts.length != 5) {
             throw new IllegalArgumentException(
                 "cron expression must have 5 fields (min hour dom month dow): " + expression);
         }
         for (int i = 0; i < 5; i++) {
-            matcher.fields[i] = parseField(parts[i], LIMITS[i]);
-            matcher.wildcard[i] = parts[i].equals("*");
+            String field = parts[i].equals("?") ? "*" : parts[i];
+            matcher.fields[i] = parseField(field, LIMITS[i]);
+            matcher.wildcard[i] = field.equals("*");
         }
         return matcher;
     }
