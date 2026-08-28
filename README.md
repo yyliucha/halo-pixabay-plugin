@@ -19,6 +19,22 @@ A [Halo 2.x](https://www.halo.run/) plugin that downloads images from [Pixabay](
 - ✅ **Automatic retries** - search requests retry with exponential backoff
 - ✅ **Download history** - last run time, added count and message shown in the console
 
+## Relationship with the official plugin & app store status (important)
+
+The official Halo ecosystem already ships [plugin-image-stream](https://github.com/halo-sigs/plugin-image-stream), which lets you **search and transfer images inside the attachment picker** (Unsplash / Pixabay / Pexels, with **built-in API keys, zero setup**). This plugin shares the same core category (image platform → Halo attachment library) and partially overlaps:
+
+| Scenario | Official plugin-image-stream | This plugin |
+|---|---|---|
+| Search & transfer inside the editor/attachment picker | ✅ core (built-in keys) | ❌ |
+| Compress / pick policy & group while transferring | ✅ | ❌ (optional in batch) |
+| Scheduled batch image library growth | ❌ | ✅ |
+| Per-keyword policy/group archiving | ❌ | ✅ |
+| Auto cover on post publish | ❌ | ✅ |
+
+Because of the same-category competition and the official plugin's ecosystem advantages (built-in keys, zero setup, official maintenance), **this project has decided to pause the Halo app store submission** and focus on **self-use + GitHub Release distribution** (see [Releases](https://github.com/yyliucha/halo-pixabay-plugin/releases)). The plugin's value proposition is **material automation**: unattended library growth, keyword-based archiving and auto cover for published posts, for personal blog content operations.
+
+> If the app store is revisited in the future, the candidate direction is an "article cover workflow": post as the primary consumption scenario (auto cover on publish + batch backfill covers for historical posts + library growth by content category), clearly separated from the official "manual search & transfer in the editor". See [FEATURES_PENDING.md](FEATURES_PENDING.md).
+
 ## Requirements
 
 - Halo **>= 2.20.0** (runs on JDK 21)
