@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.context.ReactiveSecurityContextHolder;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.core.io.buffer.DefaultDataBufferFactory;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ServerErrorException;
 import reactor.core.publisher.Flux;
@@ -312,7 +313,8 @@ public class PixabayDownloadService {
         return pixabayClient.download(url)
             .timeout(Duration.ofSeconds(30))
             .flatMap(bytes -> attachmentService.upload(policy, groupName, filename,
-                Flux.just(DefaultDataBufferFactory.sharedInstance.wrap(bytes)), null))
+                Flux.just(DefaultDataBufferFactory.sharedInstance.wrap(bytes)),
+                guessMediaType(filename)))
             .map(attachment -> {
                 history.add(String.valueOf(image.id()));
                 return true;
@@ -323,6 +325,31 @@ public class PixabayDownloadService {
                 lastError.set(e.getMessage() + " (URL: " + url + ")");
                 return Mono.just(false);
             });
+    }
+
+    /**
+     * Derive the media type from the filename extension so attachments are
+     * recognized as images by Halo (preview + thumbnail generation require the
+     * media type to be set).
+     */
+    private static MediaType guessMediaType(String filename) {
+        String lower = filename == null ? "" : filename.toLowerCase();
+        if (lower.endsWith(".png")) {
+            return MediaType.IMAGE_PNG;
+        }
+        if (lower.endsWith(".gif")) {
+            return MediaType.IMAGE_GIF;
+        }
+        if (lower.endsWith(".webp")) {
+            return MediaType.valueOf("image/webp");
+        }
+        if (lower.endsWith(".bmp")) {
+            return MediaType.valueOf("image/bmp");
+        }
+        if (lower.endsWith(".svg")) {
+            return MediaType.valueOf("image/svg+xml");
+        }
+        return MediaType.IMAGE_JPEG;
     }
 
     /**
